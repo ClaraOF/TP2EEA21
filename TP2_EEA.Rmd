@@ -1,0 +1,416 @@
+---
+title: "Modelos de Regresión Robustos - Caso de estudio: Radiación trás el accidente de la Central Nuclear Fukushima"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+  html_notebook:
+    theme: spacelab
+    toc: yes
+    toc_float: yes
+    df_print: paged
+---
+<style type="text/css">
+div.main-container {
+  max-width: 1600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+```{r, echo=FALSE}
+options(scipen=999)
+```
+## Planteo del problema
+Nuestro objetivo es crear un modelo lineal para explicar la disminución atraves del tiempo de los niveles de radiación del componente Cesio 137 en las zonas aledañas a la planta nuclear Fukushima luego del accidente nuclear ocasionado por el terremoto de magnitud 9,0 en el años 2011.
+
+Como consecuencia de este accidente se liberó la mayor cantidad de radiación (principalmente de Cesio) al medio ambiente desde el accidente de Chernobyl, representando un riesgo de dosis de radiación muy significante para las personas y fauna local. Buena parte de las partículas radiactivas liberadas terminaron llegando a los ríos cercanos a la Central y fueron transportados hacia el mar. Asimismo el
+gobierno japonés realizó tareas de saneamiento y limpieza en zonas terrestres que contribuyeron a la reducción de partículas radiactivas que caían a los ríos.
+
+Para este analisis nos basamos en el artículo "Dataset on the 6-year radiocesium transport in rivers near Fukushima Daiichi nuclear power plant" de la revista Scientific Data. [ Taniguchi, K., Onda, Y., Smith, H.G. et al. Dataset on the 6-year radiocesium transport in rivers near Fukushima Daiichi nuclear power plant. Sci Data 7, 433 (2020). DOI: https://doi.org/10.1038/s41597-020-00774-x]
+
+En dicho artículo se proporcionan  las mediciones de Cesio radiactivo (Cesio 137 y Cesio 134) ambos muy importantes para evaluar el impacto del accidente y el riesgo radiactivo en mediano-largo plazo. Se monitorearon en total 30 rios establecidos en un rango de 80 kms de la central nuclear. Se cuenta con la informacion de los sensores de dichas zonas para un periodo del 2011 a 2017.
+
+![Imagen esquemática del cálculo  de niveles  de Cesio realizado en el estudio. Taniguchi, K., Onda, Y., Smith, H.G. et al. Dataset on the 6-year radiocesium transport in rivers near Fukushima Daiichi nuclear power plant. Sci Data 7, 433 (2020). https://doi.org/10.1038/s41597-020-00774-x ](C:\\Users\\clara.o.villalba\\Documents\\FACULTAD\\EEA21\\TP2\\Imagen1.jpg)
+También se tomó como referencia el Apunte de Regresión Lineal de la Dra. María Eugenia Szretter Noste de la Carrera de Especialización en Estadística para Ciencias de la Salud, Universidad de Buenos Aires, 2017, disponibles en [**eea - campus datamining uba**](http://datamining.dc.uba.ar/campus/course/view.php?id=73)
+
+
+Esta notebook y los datos utilizados estan disponibles para su consulta en https://github.com/ClaraOF/TP2EEA21
+
+Cargamos las librerías que vamos a utilizar
+
+```{r  message = FALSE}
+library(readr)
+library(MASS)
+library(tidyverse)
+library(tidymodels)
+library(ggplot2)
+library(GGally)
+library(RColorBrewer)
+library(ggmosaic)
+library(gridExtra)
+#install.packages("predict3d")
+library("predict3d")
+```
+## Preparación de los datos 
+
+Los datos que utilizaremos estan divididos en dos Datasets que contienen las mediciones de los siguientes períodos:
+
+- DOI00020_data.csv: período 2011-2015
+- DOI00014_data.csv: perodo  2015-2017
+
+
+Levantamos ambos  Datasets y renombramos algunas columnas 
+
+```{r  message = FALSE}
+setwd("C:/Users/clara.o.villalba/Documents/FACULTAD/EEA21/TP2")  #Establezco el Working Directory
+df2 <- read_csv("DOI00014_data.csv")
+df1 <- read_csv("DOI00020_data.csv")
+names(df1)[28]<-"actividadCs137"
+names(df2)[28]<-"actividadCs137"
+names(df1)[29]<-"incerteza_actividadCs137"
+names(df2)[29]<-"incerteza_actividadCs137"
+names(df1)[33]<-"actividadCs134"
+names(df2)[33]<-"actividadCs134"
+names(df1)[34]<-"incerteza_actividadCs134"
+names(df2)[34]<-"incerteza_actividadCs134"
+names(df2)[39]<-"Correction_Periods"
+```
+Unimos ambos archivo y seleccionamos algunas variables de interés:
+
+- *xyear*: el año. Este campo esta discretizado usando la siguiente formula: xyear=yyyy+(mm-1)/12+(dd-1)/365
+
+- *LatDecimal*: latitud de la ubicacion donde se tomo la muestra. 
+Este dato fue pasado a decimal usando la siguiente formula: LatDecimal=(LatD+LatM/60+LatS/3600)
+
+- *LongDecimal*: longitud de la ubicacion donde se tomo la muestra. 
+Este dato fue pasado a decimal usando la siguiente formula:  LongDecimal=(LongD+LongM/60+LongS/3600)
+
+- *altdep*: altura  y profundidad del rio (unidad de medida metros)
+
+- *actividadCs137*: cantidad de C137 detectada.
+
+- *incerteza_actividadCs137*: error en la medición de CS137
+
+- *actividadCs134*: cantidad de C134 detectada.
+
+- *incerteza_actividadCs134*: error en la medición de CS134
+
+- *name_river*: nombre del río de donde se saco la muestra.
+
+- *Site_Number*: numero del sensor.
+
+
+```{r  message = FALSE}
+c1<-colnames(df1)
+c2<-colnames(df2)
+columnas<-intersect(c1,c2)
+
+df<-rbind(df1[,columnas],df2[,columnas])
+rm(df1)
+rm(df2)
+
+df<-df %>% select(c("xyear","LatDecimal","LongDecimal","altdep","actividadCs137","incerteza_actividadCs137","actividadCs134","incerteza_actividadCs134","name_river","Site_Number"))
+df$Site_Number<-factor(df$Site_Number)
+```
+
+Nuestra variable a predecir será el nivel de radiación del Cesio 137 (actividadCs137) campo  al cual previamente le aplicamos logaritmo en base 10 al igual que lo hacen en el artículo de referencia. La unidad de medida de dicho campo es Becquerel / Kilogramos.
+
+```{r  message = FALSE}
+df<- df %>% mutate(log_act_Cs137=log10(actividadCs137)) 
+df<- df %>% mutate(log_act_Cs134=log10(actividadCs134)) 
+```
+Observemos un resumen de los datos 
+
+```{r  message = FALSE}
+glimpse(df)
+
+df %>%
+  head()
+```
+Podemos observar que el dataset tiene 1093 observaciones y 12 variables 
+
+A continuación, creamos un mapa navegable para visualizar la zona a analizar:
+```{r message=FALSE}
+## -----------------------   mapa navegable -------------------------------------
+#install.packages("highcharter")
+library(highcharter)
+#
+ tabla_sensores<-df %>% select(c(Site_Number,LatDecimal,LongDecimal)) %>% distinct()
+#
+ tags<-paste0("sensor_",tabla_sensores$Site_Number)
+#
+ tabla_sensores<-rbind(tabla_sensores,c(factor("CN"),37.421389, 141.0325)) #central nuclear
+ tags<-c(unlist(tags),"CN")
+#
+#
+ sensores <- data.frame(
+   name = tags,
+   lat = tabla_sensores$LatDecimal,
+   lon = tabla_sensores$LongDecimal,
+   z = seq(1,30)
+ )
+#
+ hcmap("countries/jp/jp-all", showInLegend = FALSE) %>%
+   hc_add_series(
+     data = sensores,
+     type = "mappoint",
+     name = "Sensores",
+     color= hex_to_rgba("darkred", alpha = 0.3),
+     minSize = "1%",
+     maxSize = "5%"
+   ) %>%
+  hc_mapNavigation(enabled = TRUE)
+```
+
+
+Como mencionamos anteriormente, nuestra variable a predecir sera la radiacion  del Cesio 137 (log_act_Cs137).  Decidimos usar esa variable pues es la que tiene mayor tiempo de semidesintegración (Cs137 tarda 30 años y el 134 20 años). 
+
+En el archivo original contamos con la informacion de 30 sensores distintos. Para facilitar el análisis nos quedaremos con la información de los 6 sensores asociadas al Rio Abukuma el canal principal con salida al mar. 
+
+```{r}
+#-------------------------- Rio Abukuma- Principal--------------------
+df_abukuma<-filter(df, name_river == "Abukuma")
+df_abukuma$Site_Number<-factor(df_abukuma$Site_Number)
+unique(df_abukuma$Site_Number)
+glimpse(df_abukuma)
+```
+Finalmente este archivo cuenta con 229 observaciones.
+Los 6 sensores asociadas al Rio Abukuma tienen los siguientes numeros identificatorios: 5, 6, 12, 13, 17, 21
+
+Graficamos como fue la evolución de la actividad del CS137 en el Río Abukuma a través del tiempo.
+```{r  message = FALSE}
+g2 <- ggplot(df_abukuma , aes(xyear,(log_act_Cs137)))+
+  geom_point(aes(color = factor(Site_Number)))+
+  ggtitle("Rio Abukuma - Principal") +
+  xlab("tiempo") + ylab("log10(actividad Cs137)")+
+  theme_bw()
+g2 
+```
+
+En el grafico anterior podemos observar una disminucion de la actividad radiactiva con el paso del tiempo.
+
+Veamos cómo es la correlación entre las variables numéricas. 
+
+```{r, progress=FALSE, message=FALSE,  warning=FALSE, fig.width=12, fig.height=8}
+# grafico correlaciones
+g <- ggpairs(df_abukuma %>% select(c("xyear","log_act_Cs137","log_act_Cs134","Site_Number")), aes(color = factor(df_abukuma$Site_Number)))+ 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "bottom") + 
+  theme_bw()
+
+for(i in 1:g$nrow) {
+  for(j in 1:g$ncol){
+    g[i,j] <- g[i,j] + 
+      scale_fill_brewer(palette="Dark2") +  
+      scale_color_brewer(palette="Dark2")
+  }
+}
+g 
+```
+
+Respecto de nuestra variable a predecir, observamos:
+
+- presenta una muy alta correlacion con la varaible de radiacion CS134, lo cual es esperable.
+- el año también esta muy correlacionado con ambas mediciones y de manera negativa lo que se condice con que la radiacion se va reduciendo en el tiempo.
+
+Tambien se observan que existen más mediciones del sensor 5 y 6, pues estos sensores fueron colocados antes y tienen mediciones desede el 2012. Los sensores 17 y 21 no tienen mediciones para ese año.
+
+
+## Modelo Múltiple Simple
+
+Como nos interesa analizar la evolucion de la radiación del Cesio 137 a travez del tiempo, planteamos un modelo simple en donde solo utilizaremos el tiempo como variable predictora. 
+
+$Cs137 = \beta_0 + \beta_1x_{i1}$
+
+Para facilitar el analisis solo tomaremos las mediciones de los sensores 6 y 17.
+
+```{r}
+#filtramos los datos de los sensores 6 y 17:
+df_abukuma6_17<-filter(df_abukuma, Site_Number %in% c(6,17))
+glimpse(df_abukuma6_17)
+```
+Finalmente nos quedamos entonces con 88 observaciones.
+
+Ajustamos este primer modelo con los datos mencionados:
+```{r}
+#definimos la formula
+f1<-formula(log_act_Cs137 ~ xyear)
+#ajustamos el modelo
+modelo_1 <- lm(f1, data = df_abukuma6_17)
+# Resumen del modelo
+tidy_sc_r <- tidy(modelo_1, conf.int = TRUE)
+tidy_sc_r
+#graficamos
+predict3d::ggPredict(modelo_1,se=TRUE)
+
+```
+Podemos ver que 
+- Teóricamente el valor del intercepto (497.1539002) es igual al valor esperado de radición para el año cero. Por este motivo este valor carece de interpretación práctica.
+
+- El valor de β1^= -0.2451408 indica que por cada aumento de un año la radiación esperada se reduce en dicho valor.
+
+Realizamos el diagnóstico del modelo
+```{r}
+glance(modelo_1)
+```
+Observamos que el R-cuadrado es igual a 0.70 por lo tanto el modelo propuesto es un muy buen modelo para explicar la variacion de la radicacion del Cesio 137 atravez del tiempo.
+```{r}
+#summary(modelo_2)
+par(mfrow=c(2,2))
+plot(modelo_1)
+```
+
+Sin embargo, obeservando en los graficos de residuos vemos que:
+
+- **Residuos vs valores predichos:** Parece existir cierta estructura en los datos: hay una leve curvatura
+
+- **Normal QQ plot**: los extremos no se ajustan a la distribución teórica
+
+- **Residual vs leverage**: Existen algunos puntos con un mayor leverage pero no llegan a ser puntos influyentes. 
+
+Como el objetivo de este trabajo es mostrar un caso de aplicación de modelos robustos, decidimos agregar manualmente algunas observaciones influyentes. 
+
+Para ello luego de analizar los datos decidimos tomar observaciones del sensor 12 con fecha mayor a 2016, multiplicarlas por 1.30 y luego agregarlas al dataset que teniamos.
+```{r}
+#tomamos las observaciones del sensor 12
+agregar<-df_abukuma[df_abukuma[, "Site_Number"] == 12 & df_abukuma[, "xyear"] > 2016.3,]
+glimpse(agregar)
+#son 4 las observaciones agregadas
+#hacemos el calculo:
+agregar$log_act_Cs137<-agregar$log_act_Cs137*1.30
+#lo agregamos a nuestro datos originales:
+df_abukuma6_17<-rbind(df_abukuma6_17,agregar)
+glimpse(df_abukuma6_17)
+
+```
+Como podemos observar se agregaron 4 nuevas observaciones.
+
+Apliquemos el modelo_1 sobre estos nuevos datos:
+
+```{r}
+#definimos la formula
+f1<-formula(log_act_Cs137 ~ xyear)
+#ajustamos el modelo
+modelo_1b <- lm(f1, data = df_abukuma6_17)
+# Resumen del modelo
+tidy_sc_r <- tidy(modelo_1b, conf.int = TRUE)
+tidy_sc_r
+
+```
+
+Realizamos el diagnostico del modelo
+```{r}
+par(mfrow=c(2,2))
+plot(modelo_1b)
+```
+
+Con este nuevo dataset  notamos la presencia de observaciones influyentes  que arrastraron la recta hacia ellas tal como podemos apreciar en los siguientes gráficos. Es decir el modelo se ve influenciado por la presencia de estos datos.
+```{r}
+#graficamos ambos modelos para comparar
+
+predict3d::ggPredict(modelo_1,se=TRUE)
+predict3d::ggPredict(modelo_1b,se=TRUE)
+
+boxplot(residuals(modelo_1),
+residuals(modelo_1b),names=c("res modelo_1","res modelo_1b"))
+
+```
+
+Aplicaremos modelos robustos sobre este nuevo dataset
+
+## Modelo Robusto
+Ajustaremos 2 modelos:
+
+- **lmrob**: es la implementación en R de un ajuste robusto usando MM-estimador de regresión. Usa el algoritmo M-S de Maronna and Yohai (2000) (Paquete robustbase)
+
+- **rlm**: tambien usa  un MM-estimador de regresión pero fue una de las primeras implemetaciones de modelos robustos. (Paquete MASS)
+```{r  message = FALSE}
+library(robustbase)
+modelo_lmrob <- lmrob(f1, data = df_abukuma6_17)
+modelo_rlm <- rlm(f1, data = df_abukuma6_17)
+
+# Resumen de los modelos
+tidy_sc_lmrob <- tidy(modelo_lmrob, conf.int = TRUE)
+tidy_sc_lmrob
+
+tidy_sc_rlm <- tidy(modelo_rlm, conf.int = TRUE)
+tidy_sc_rlm
+
+par(mfrow=c(2,2))
+plot(modelo_lmrob)
+
+par(mfrow=c(2,2))
+plot(modelo_rlm)
+```
+
+```{r  message = FALSE}
+robpesos<-modelo_lmrob$rweights
+robpesos
+```
+En la tabla anterior podemos observar que el peso que el ajuste robusto otorga a cada observación es prácticamente el mismo y casi uno, excepto para las últimas 4 observaciones (las que agregamos intencionalmente) que reciben peso cero, es decir no interviene en el ajuste.
+
+### Graficamos los residuos
+```{r  message = FALSE}
+library(robustbase)
+#residuos
+boxplot(residuals(modelo_1b),residuals(modelo_lmrob),
+residuals(modelo_rlm),
+names=c("residuos lm","residuos lmrob","residuos rlm"))
+```
+
+El ajuste de lm arrastra la recta hacia los datos atipicos enmascarando la presencia de algunos outlier. El ajuste del lmrob y rlm, al no dejarse influenciar por observaciones atípicas permiten identificar  outliers al estudiar los residuos.
+
+### Evaluacion de los modelos
+```{r}
+models <- list(modelo_inicial = modelo_1, modelo_perturbado = modelo_1b, modelo_lmrob = modelo_lmrob, modelo_rlm= modelo_rlm) 
+# calculamos las variables resumen
+purrr::map_df(models, broom::tidy, .id = "model")
+
+# Aplicamos la función augment a los modelos
+lista_predicciones = map(.x = models, .f = augment)
+# Obtenemos el MAE para los  modelos
+map_dfr(.x = lista_predicciones, .f = mae, truth = log_act_Cs137, estimate = .fitted, .id="modelo") %>% arrange(.estimate)
+```
+Se observa que los modelos robustos dan menor valor de MAE
+
+Comparamos ahora graficamente las rectas ajustadas por ambos modelos robustos vs la recta no robusta:
+```{r}
+ggplot(df_abukuma6_17,aes(xyear,log_act_Cs137)) + geom_point() + geom_abline(intercept = coef(modelo_1b)[1],slope = coef(modelo_1b)[2],col="blue",lty=2,lwd=2) + 
+geom_abline(intercept =modelo_lmrob$coefficients[1],slope = modelo_lmrob$coefficients[2],col="red",lty=1,lwd=1)+ labs(title = "Comparacion modelo simple vs modelo robusto (lmrob)")
+
+```
+
+La linea azul punteada representa al modelo lineal simple, observamos como su pendiente se ve influenciada por la presencial de observaciones atipicas. La linea roja es el modelo robusto ajustado con la funcion lmrob. Observamos como este segundo modelo no se ve influenciado.
+
+Lo mismo podemos observar al comparlo con el modelo robusto ajustado con rlm.
+```{r}
+ggplot(df_abukuma6_17,aes(xyear,log_act_Cs137)) + geom_point() + geom_abline(intercept = coef(modelo_1b)[1],slope = coef(modelo_1b)[2],col="blue",lty=2,lwd=2) + 
+geom_abline(intercept =modelo_rlm$coefficients[1],slope = modelo_rlm$coefficients[2],col="red",lty=1,lwd=1)+ labs(title = "Comparacion modelo simple vs modelo robusto (rlm)")
+
+```
+## Conclusiones
+
+Si bien es posible explicar el problema planteado mediante un modelo lineal simple usando la recta de mínimos cuadrados, vimos que esta es muy sensible a la presencia de valoress atípicos. Esto lo comprobamos al agregar nuevas observaciones atípicas en el dataset que luego  influenciaron notablemente al modelo inicial. En particular utilizamos dos implementacion de R que usan  MM estimadores de regresión con las que pudimos evidenciar que le fueron asignados un peso igual a cero a las observaciones influyentes para que no intervengan en el ajuste.
+Concluimos entonces la importancia de hacer un ajuste robusto a los datos.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
