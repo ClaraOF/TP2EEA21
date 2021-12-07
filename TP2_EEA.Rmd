@@ -1,5 +1,6 @@
 ---
 title: "Modelos de Regresión Robustos - Caso de estudio: Radiación trás el accidente de la Central Nuclear Fukushima"
+author: "Flavia Felicioni y Clara Villalba"
 output:
   html_document:
     toc: yes
@@ -31,6 +32,7 @@ Para este analisis nos basamos en el artículo "Dataset on the 6-year radiocesiu
 En dicho artículo se proporcionan  las mediciones de Cesio radiactivo (Cesio 137 y Cesio 134) ambos muy importantes para evaluar el impacto del accidente y el riesgo radiactivo en mediano-largo plazo. Se monitorearon en total 30 rios establecidos en un rango de 80 kms de la central nuclear. Se cuenta con la informacion de los sensores de dichas zonas para un periodo del 2011 a 2017.
 
 ![Imagen esquemática del cálculo  de niveles  de Cesio realizado en el estudio. Taniguchi, K., Onda, Y., Smith, H.G. et al. Dataset on the 6-year radiocesium transport in rivers near Fukushima Daiichi nuclear power plant. Sci Data 7, 433 (2020). https://doi.org/10.1038/s41597-020-00774-x ](C:\\Users\\clara.o.villalba\\Documents\\FACULTAD\\EEA21\\TP2\\Imagen1.jpg)
+
 También se tomó como referencia el Apunte de Regresión Lineal de la Dra. María Eugenia Szretter Noste de la Carrera de Especialización en Estadística para Ciencias de la Salud, Universidad de Buenos Aires, 2017, disponibles en [**eea - campus datamining uba**](http://datamining.dc.uba.ar/campus/course/view.php?id=73)
 
 
@@ -243,7 +245,8 @@ tidy_sc_r
 predict3d::ggPredict(modelo_1,se=TRUE)
 
 ```
-Podemos ver que 
+Podemos ver que:
+
 - Teóricamente el valor del intercepto (497.1539002) es igual al valor esperado de radición para el año cero. Por este motivo este valor carece de interpretación práctica.
 
 - El valor de β1^= -0.2451408 indica que por cada aumento de un año la radiación esperada se reduce en dicho valor.
@@ -387,6 +390,7 @@ ggplot(df_abukuma6_17,aes(xyear,log_act_Cs137)) + geom_point() + geom_abline(int
 geom_abline(intercept =modelo_rlm$coefficients[1],slope = modelo_rlm$coefficients[2],col="red",lty=1,lwd=1)+ labs(title = "Comparacion modelo simple vs modelo robusto (rlm)")
 
 ```
+
 ## Conclusiones
 
 Si bien es posible explicar el problema planteado mediante un modelo lineal simple usando la recta de mínimos cuadrados, vimos que esta es muy sensible a la presencia de valoress atípicos. Esto lo comprobamos al agregar nuevas observaciones atípicas en el dataset que luego  influenciaron notablemente al modelo inicial. En particular utilizamos dos implementacion de R que usan  MM estimadores de regresión con las que pudimos evidenciar que le fueron asignados un peso igual a cero a las observaciones influyentes para que no intervengan en el ajuste.
